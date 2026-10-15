@@ -1,0 +1,169 @@
+<!DOCTYPE HTML><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head prefix="og: http://ogp.me/ns#"><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"><link type="text/css" rel="stylesheet" media="all" href="/static/util.ScMZxgG+.css"><title>Nested Loops, ORMs and the N+1 Problem in ORMs</title><meta name="description" content="The nested loops join algorithm is simple, yet very efficient in many cases. ORM tools often prevent them."><link rel="canonical" href="https://use-the-index-luke.com/sql/join/nested-loops-join-n1-problem"><link rel="alternate" hreflang="de" href="https://use-the-index-luke.com/de/sql/join/n1-problem-verschachtelte-schleifen"><link rel="alternate" hreflang="fr" href="https://use-the-index-luke.com/fr/sql/l-operation-de-jointure/boucles-imbriquees"><link rel="alternate" hreflang="en" href="https://use-the-index-luke.com/sql/join/nested-loops-join-n1-problem"><link rel="alternate" hreflang="es" href="https://use-the-index-luke.com/es/sql/join/nested-loops"><link rel="alternate" hreflang="ja" href="https://use-the-index-luke.com/ja/sql/join/nested-loops-join-n1-problem"><meta property="og:title" content="Nested Loops, ORMs and the N+1 Problem in ORMs"><meta property="og:description" content="The nested loops join algorithm is simple, yet very efficient in many cases. ORM tools often prevent them."><meta property="og:image" content="https://use-the-index-luke.com/static/util_squirrel.og.fMeqdSQq.png"><meta name="twitter:card" content="summary"><meta name="twitter:site" content="@SQLPerfTips"><meta name="twitter:creator" content="@MarkusWinand"><link rel="apple-touch-icon" sizes="180x180" href="/static/favicon-180.ZbtZnW-D.png"><meta name="msapplication-TileImage" content="/static/favicon-180.ZbtZnW-D.png"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="alternate" type="application/rss+xml" href="/blog/feed" title="The Use The Index, Luke Blog"><meta name="flattr:id" content="m0ovgy"><noscript><style>.needsjs {display:none !important;}</style></noscript><script>document.documentElement.className="js-early";</script></head><body><div id="page-wrapper"><div id="page"><div id="header"><a rel="home" href="/"><img id="header-logo" height="130" width="770" src="/static/header-logo.6aLqEdMq.svg" title="HomeHome" alt="Use The Index Luke: A guide to SQL performance for developers"></a></div><div id="main-wrapper"><div class="region-content-top"><div class="flags"></div><form action="/" method="get" class="needsjs"><div><select name="u" onchange="window.location.href = this.options[this.selectedIndex].value"><option value="/de/sql/join/n1-problem-verschachtelte-schleifen">Deutsch</option><option value="/fr/sql/l-operation-de-jointure/boucles-imbriquees">Français</option><option value="/sql/join/nested-loops-join-n1-problem" selected>English</option><option value="/es/sql/join/nested-loops">Español</option><option value="/ja/sql/join/nested-loops-join-n1-problem">日本語</option></select></div></form><noscript><p class="translator">[&nbsp;<a href="/de/sql/join/n1-problem-verschachtelte-schleifen">DE</a>&nbsp;|&nbsp;<a href="/fr/sql/l-operation-de-jointure/boucles-imbriquees">FR</a>&nbsp;|&nbsp;<a href="/es/sql/join/nested-loops">ES</a>&nbsp;|&nbsp;<a href="/ja/sql/join/nested-loops-join-n1-problem">JA</a>&nbsp;]</p></noscript><p class="translator">by <a href="//winand.at/home">Markus Winand</a>.</p></div><div class="breadcrumb"><a href="/sql/table-of-contents">Table of Contents</a><span> › </span><a href="/sql/join">The Join Operation</a><span> › </span></div><div class="clearfix"><div id="content"><div class="section"><h1 id="main-title">Nested Loops</h1><hr><div class="content"><div id="article"><p>The nested loops join is the most fundamental join algorithm. It works like using two nested queries: the outer or driving query to fetch the results from one table and a second query <em>for each row</em> from the driving query to fetch the corresponding data from the other table.</p><p>You can actually use “nested selects” to implement the nested loops algorithm on your own. Nevertheless that is a troublesome approach because network latencies occur on top of disk latencies—making the overall response time even worse. “Nested selects” are still very common because it is easy to implement them without being aware of it. Object-relational mapping (ORM) tools are particularly “helpful” in this respect…to the extent that the so-called <em>N+1 selects problem</em> has gained a sad notoriety in the field.</p><div class="admonition-wrapper"><div class="admonition"><span class="icon"></span><h4>If you like this page, you might also like …</h4><p>… to <a href="https://winand.at/lists">subscribe my <b>mailing lists</b></a>, <a href="https://use-the-index-luke.com/shop">get <b>free stickers</b></a>, <a href="https://sql-performance-explained.com/?utm_source=use-the-index-luke.com&amp;utm_campaign=sec-nested-loops&amp;utm_medium=web">buy <b>my book</b></a> or <a href="https://winand.at/sql-training/open-online-class">join a <b>training</b></a>.</p></div></div><p>The following examples show these “accidental nested select” joins produced with different ORM tools. The examples search for employees whose last name starts with <code>'WIN'</code> and fetches all <code>SALES</code> for these employees.</p><p><div class="variablelist clearfix"><dl class="lang_tabs lang_tabs_default" id="orm-client-join"><dt class="java default"><a href="">Java</a></dt><dd class="java default"><p>The JPA example uses the <a href="https://docs.oracle.com/javaee/6/api/javax/persistence/criteria/CriteriaBuilder.html">CriteriaBuilder</a> interface.</p><pre><code>CriteriaBuilder queryBuilder = em.getCriteriaBuilder();
+CriteriaQuery&lt;Employees&gt;
+   query = queryBuilder.createQuery(Employees.class);
+Root&lt;Employees&gt; r = query.from(Employees.class); 
+query.<b>where</b>(
+  queryBuilder.<b>like</b>(
+    queryBuilder.<b>upper</b>(r.get(<b>Employees_.lastName</b>)),
+    <b>"WIN%"</b>
+  )
+);
+
+List&lt;Employees&gt; emp = em.createQuery(query).getResultList();
+
+for (Employees e: emp) {
+  // process Employee
+  for (Sales s: e.getSales()) {
+    // process sale for Employee
+  }
+}</code></pre><p>Hibernate JPA 3.6.0 generates N+1 <code class="command">select</code> queries:</p><pre><code>select employees0_.subsidiary_id as subsidiary1_0_
+       -- MORE COLUMNS
+  <b>from employees</b> employees0_ 
+ where upper(employees0_.last_name) like ?</code></pre><pre><code>  select sales0_.subsidiary_id as subsidiary4_0_1_
+         -- MORE COLUMNS
+    <b>from sales</b> sales0_
+   where sales0_.subsidiary_id=? 
+     and sales0_.employee_id=?</code></pre><pre><code>  select sales0_.subsidiary_id as subsidiary4_0_1_
+         -- MORE COLUMNS
+    <b>from sales</b> sales0_
+   where sales0_.subsidiary_id=? 
+     and sales0_.employee_id=?</code></pre></dd><dt class="perl"><a href="">Perl</a></dt><dd class="perl"><p>The following sample demonstrates Perl’s <a href="https://metacpan.org/dist/DBIx-Class">DBIx::Class</a> framework:</p><pre><code>my @employees = 
+   $schema-&gt;resultset('Employees')
+          -&gt;search({'<b>UPPER(last_name)</b>' =&gt; {-<b>like</b>=&gt;<b>'WIN%'</b>}});
+
+foreach my $employee (@employees) {
+   # process Employee
+   foreach my $sale ($employee-&gt;sales) {
+      # process Sale for Employee
+   }
+}</code></pre><p>DBIx::Class 0.08192 generates N+1 <code class="command">select</code> queries:</p><pre><code>SELECT me.employee_id, me.subsidiary_id
+     , me.last_name, me.first_name, me.date_of_birth 
+  <b>FROM employees</b> me 
+ WHERE ( UPPER(last_name) LIKE ? )</code></pre><pre><code>   SELECT me.sale_id, me.employee_id, me.subsidiary_id
+        , me.sale_date, me.eur_value
+     <b>FROM sales</b> me
+    WHERE ( ( me.employee_id = ? 
+      AND me.subsidiary_id = ? ) )</code></pre><pre><code>   SELECT me.sale_id, me.employee_id, me.subsidiary_id
+        , me.sale_date, me.eur_value
+     <b>FROM sales</b> me
+    WHERE ( ( me.employee_id = ? 
+      AND me.subsidiary_id = ? ) )</code></pre></dd><dt class="php"><a href="">PHP</a></dt><dd class="php"><p>The <a href="https://www.doctrine-project.org/">Doctrine</a> sample uses the query builder interface:</p><pre><code>$qb = $em-&gt;createQueryBuilder();
+$qb-&gt;select('e')
+   -&gt;from('Employees', 'e')
+   -&gt;where("upper(e.last_name) like :last_name")
+   -&gt;setParameter('last_name', 'WIN%');
+$r = $qb-&gt;getQuery()-&gt;getResult();
+foreach ($r as $row) {
+   // process Employee
+   foreach ($row-&gt;getSales() as $sale) {
+      // process Sale for Employee
+   }
+}</code></pre><p>Doctrine 2.0.5 generates N+1 <code class="command">select</code> queries:</p><pre><code>SELECT e0_.employee_id AS employee_id0 -- MORE COLUMNS
+  <b>FROM employees</b> e0_
+ WHERE UPPER(e0_.last_name) LIKE ?</code></pre><pre><code>   SELECT t0.sale_id AS SALE_ID1 -- MORE COLUMNS
+     <b>FROM sales</b> t0 
+    WHERE t0.subsidiary_id = ? 
+      AND t0.employee_id = ?</code></pre><pre><code>   SELECT t0.sale_id AS SALE_ID1 -- MORE COLUMNS
+     <b>FROM sales</b> t0 
+    WHERE t0.subsidiary_id = ? 
+      AND t0.employee_id = ?</code></pre></dd></dl></div>The ORMs don’t generate SQL joins—instead they query the <code>SALES</code> table with nested selects. This effect is known as the “N+1 selects problem” or shorter the “N+1 problem” because it executes N+1 selects in total if the driving query returns N rows.</p><div id="tip-orm-log-sql" class="admonition-wrapper"><div class="admonition"><span class="icon"></span><h4>Enabling SQL Logging</h4><p class="tweet tip-l#">Enable SQL logging during development and review the generated SQL statements.</p><dl><dt><a href="https://metacpan.org/release/RIBASUSHI/DBIx-Class-0.082840/view/lib/DBIx/Class/Manual/FAQ.pod#misc">DBIx::Class</a></dt><dd><p class="short"><code>export DBIC_TRACE=1</code> in your shell.</p></dd><dt><a href="https://www.doctrine-project.org/projects/doctrine-orm/en/latest/reference/advanced-configuration.html#sql-logger-optional">Doctrine</a></dt><dd><p>Only on source code level—don’t forget to disable this for production. Consider building your own configurable logger.</p><pre><code>$logger = new \Doctrine\DBAL\Logging\EchoSqlLogger;
+$config-&gt;setSQLLogger($logger);</code></pre></dd><dt>Hibernate (native)</dt><dd><p><code>&lt;property name="show_sql"&gt;true&lt;/property&gt;</code> in <code><a href="https://nhibernate.info/doc/howto/various/configure-log4net-for-use-with-nhibernate">App.config</a></code> or <code>hibernate.cfg.xml</code></p></dd><dt>JPA</dt><dd><p>In <code>persistence.xml</code> but depending on the JPA provider—e.g., for <a href="https://wiki.eclipse.org/EclipseLink/Examples/JPA/Logging">eclipselink</a>, <a href="https://docs.hibernate.org/orm/current/userguide/html_single/#_sql_statement_logging">Hibernate</a> and <a href="https://openjpa.apache.org/builds/3.2.2/apache-openjpa/docs/#ref_guide_logging">OpenJPA</a>:</p><pre><code>&lt;property name="eclipselink.logging.level" value="FINE"/&gt;
+&lt;property name="hibernate.show_sql" value="TRUE"/&gt;
+&lt;property name="openjpa.Log" value="SQL=TRACE"/&gt;</code></pre></dd></dl><p>Most ORMs offer a programmatic way to enable SQL logging as well. That involves the risk of accidentally deploying the setting in production.</p></div></div><p>Even though the “nested selects” approach is an anti-pattern, it still explains the <em>nested loops</em> join pretty well. The database executes the join exactly as the ORM tools above. Indexing for a nested loops join is therefore like indexing for the above shown <code class="command">select</code> statements. That is a <a href="/sql/where-clause/functions">function-based index</a> on the table <code>EMPLOYEES</code> and a <a href="/sql/where-clause/the-equals-operator/concatenated-keys">concatenated index</a> for the join predicates on the <code>SALES</code> table:</p><pre><code>CREATE INDEX emp_up_name ON employees (UPPER(last_name))</code></pre><pre><code>CREATE INDEX sales_emp ON sales (subsidiary_id, employee_id)</code></pre><p>An SQL join is still more efficient than the nested selects approach—even though it performs the same index lookups—because it avoids a lot of network communication. It is even faster if the total amount of transferred data is bigger because of the duplication of employee attributes for each sale. That is because of the two dimensions of performance: <a href="/sql/testing-scalability/response-time-throughput-scaling-horizontal">response time and throughput</a>; in computer networks we call them <em>latency</em> and <em>bandwidth</em>. Bandwidth has only a minor impact on the response time but latencies have a huge impact. That means that the number of database round trips is more important for the response time than the amount of data transferred.</p><div id="tip-orm-use-joins" class="admonition-wrapper"><div class="admonition"><span class="icon"></span><h4>Tip</h4><p class="tweet tip-j">Execute joins in the database.</p></div></div><p>Most ORM tools offer some way to create SQL joins. The so-called <em>eager fetching</em> mode is probably the most important one. It is typically configured at the property level in the entity mappings—e.g., for the <code>employees</code> property in the <code>Sales</code> class. The ORM tool will then always join the <code>EMPLOYEES</code> table when accessing the <code>SALES</code> table. Configuring eager fetching in the entity mappings only makes sense if you always need the employee details along with the sales data.</p><p>Eager fetching is counterproductive if you do not need the child records every time you access the parent object. For a telephone directory application, it does not make sense to load the <code>SALES</code> records when showing employee details. You might need the related sales data in other cases—but not always. A static configuration is no solution.</p><p>For optimal performance, you need to gain full control over joins. The following examples show how to get the greatest flexibility by controlling the join behavior at runtime.</p><p><div class="variablelist clearfix"><dl class="lang_tabs lang_tabs_default" id="orm-join"><dt class="java default"><a href="">Java</a></dt><dd class="java default"><p>The JPA <a href="https://docs.oracle.com/javaee/6/api/javax/persistence/criteria/CriteriaBuilder.html"><code>CriteriaBuilder</code></a> interface provides the <code>Root&lt;&gt;.fetch()</code> method for controlling joins. It allows you to specify when and how to join referred objects to the main query. In this example we use a left join to retrieve all employees even if some of them do not have sales.</p><div class="admonition-wrapper"><div class="admonition"><span class="icon"></span><h4>Warning</h4><p>JPA and Hibernate return the employees <em>for each sale.</em></p><p>That means that an employee with 30 sales will appear 30 times. Although it is very disturbing, it is the specified behavior (<a href="https://download.oracle.com/otndocs/jcp/ejb-3_0-fr-eval-oth-JSpec/">EJB 3.0 persistency, paragraph 4.4.5.3 “Fetch Joins”</a>). You can either manually de-duplicate the parent relation e.g. using a <a href="https://developer.jboss.org/docs/DOC-15782#jive_content_id_Hibernate_does_not_return_distinct_results_for_a_query_with_outer_join_fetching_enabled_for_a_collection_even_if_I_use_the_distinct_keyword"><code>LinkedHashSet</code></a> or use the function <code>distinct()</code> as shown in the example.</p></div></div><pre><code>CriteriaBuilder qb = em.getCriteriaBuilder();
+CriteriaQuery&lt;Employees&gt; q = qb.createQuery(Employees.class);
+Root&lt;Employees&gt; r = q.from(Employees.class); 
+q.where(queryBuilder.like(
+    queryBuilder.upper(r.get(Employees_.lastName)),
+    "WIN%")
+);
+
+<b>r.fetch("sales", JoinType.LEFT);
+// needed to avoid duplication of Employee records
+q.distinct(true);</b>
+
+List&lt;Employees&gt; emp = em.createQuery(q).getResultList();</code></pre><p>Hibernate 3.6.0 generates the following SQL statement:</p><pre><code>select <b>distinct</b> 
+       employees0_.subsidiary_id as subsidiary1_0_0_
+     , employees0_.employee_id as employee2_0_0_
+       -- MORE COLUMNS
+     , sales1_.sale_id as sale1_0__
+  <b>from employees</b> employees0_
+  <b>left outer join sales</b> sales1_ 
+          on employees0_.subsidiary_id=sales1_.subsidiary_id
+         and employees0_.employee_id=sales1_.employee_id 
+ where upper(employees0_.last_name) like ?</code></pre><p>The query has the expected left join but also an unnecessary <code>distinct</code> keyword. Unfortunately, JPA does not provide separate API calls to filter duplicated parent entries without de-duplicating the child records as well. The <code>distinct</code> keyword in the SQL query is alarming because most databases will actually filter duplicate records. Only a few databases recognize that the primary keys guarantees uniqueness in that case anyway.</p><p>The native Hibernate API solves the problem on the client side using a result set transformer:</p><pre><code>Criteria c = session.createCriteria(Employees.class);
+c.add(Restrictions.ilike("lastName", 'Win%'));
+
+<b>c.setFetchMode("sales", FetchMode.JOIN);
+c.setResultTransformer(Criteria.DISTINCT_ROOT_ENTITY);</b>
+
+List&lt;Employees&gt; result = c.list();</code></pre><p>It generates the following query:</p><pre><code>select this_.subsidiary_id as subsidiary1_0_1_
+     , this_.employee_id as employee2_0_1_
+       -- MORE this_ columns on employees
+     , sales2_.sale_id as sale1_3_
+       -- MORE sales2_ columns on sales
+  <b>from employees</b> this_ 
+  <b>left outer join sales</b> sales2_ 
+          on this_.subsidiary_id=sales2_.subsidiary_id 
+         and this_.employee_id=sales2_.employee_id 
+ where <b>lower(this_.last_name)</b> like ?</code></pre><p>This method produces straight SQL without unintended clauses. Note that Hibernate uses <code>lower()</code> for case-insensitive queries—an important detail for <a href="/sql/where-clause/functions">function-based indexing</a>.</p></dd><dt class="perl"><a href="">Perl</a></dt><dd class="perl"><p>The following example uses Perl’s <a href="https://metacpan.org/dist/DBIx-Class">DBIx::Class</a> framework:</p><pre><code>my @employees = 
+   $schema-&gt;resultset('Employees')
+          -&gt;search({ 'UPPER(last_name)' =&gt; {-like =&gt; 'WIN%'}
+                   , <b>{prefetch =&gt; ['sales']}</b>
+                   });</code></pre><p>DBIx::Class 0.08192 generates the following SQL statement:</p><pre><code>SELECT me.employee_id, me.subsidiary_id, me.last_name
+       -- MORE COLUMNS
+  <b>FROM employees</b> me 
+  <b>LEFT JOIN sales</b> sales 
+         ON (sales.employee_id   = me.employee_id 
+        AND  sales.subsidiary_id = me.subsidiary_id) 
+ WHERE ( UPPER(last_name) LIKE ? )
+ <b>ORDER BY sales.employee_id, sales.subsidiary_id</b></code></pre><p>Note the <code class="command">order by</code> clause—it was not requested by the application. The database has to sort the result set accordingly, and that might take a while.</p></dd><dt class="php"><a href="">PHP</a></dt><dd class="php"><p>The following example uses PHP’s <a href="https://www.doctrine-project.org/">Doctrine</a> framework:</p><pre><code>$qb = $em-&gt;createQueryBuilder();
+$qb-&gt;<b>select('e,s')</b>
+   -&gt;from('Employees', 'e')
+   -&gt;<b>leftJoin('e.sales', 's')</b>
+   -&gt;where("upper(e.last_name) like :last_name")
+   -&gt;setParameter('last_name', 'WIN%');
+$r = $qb-&gt;getQuery()-&gt;getResult();</code></pre><p>Doctrine 2.0.5 generates the following SQL statement:</p><pre><code>SELECT e0_.employee_id AS employee_id0
+       -- MORE COLUMNS
+  <b>FROM employees</b> e0_ 
+  <b>LEFT JOIN sales</b> s1_ 
+         ON e0_.subsidiary_id = s1_.subsidiary_id 
+        AND e0_.employee_id = s1_.employee_id 
+ WHERE UPPER(e0_.last_name) LIKE ?</code></pre></dd></dl></div></p><p>The execution plan shows the <code>NESTED LOOPS OUTER</code> operation:</p><div class="variablelist clearfix"><dl class="print-only-oracle db_tabs db_tabs_default" id="ch04-nl-join"><dt class="db2"><a href="">Db2 (LUW)</a></dt><dd class="db2"><pre><code>Explain Plan
+---------------------------------------------------------------
+ID | Operation               |                     Rows |  Cost
+ 1 | RETURN                  |                          | 10501
+ 2 |  NLJOIN (LEFT)          |               5745 of 57 | 10501
+ 3 |   FETCH EMPLOYEES       |       57 of 57 (100.00%) |    49
+ 4 |    RIDSCN               |       57 of 57 (100.00%) |     6
+ 5 |     SORT (UNIQUE)       |       57 of 57 (100.00%) |     6
+ 6 |      IXSCAN EMP_NAME    |    57 of 10000 (   .57%) |     6
+ 7 |   FETCH SALES           |     101 of 101 (100.00%) |   183
+ 8 |    IXSCAN SALES_SUB_EMP | 101 of 1011118 (   .01%) |    13
+
+Predicate Information
+ 2 - JOIN (Q2.EMPLOYEE_ID = Q3.EMPLOYEE_ID)
+     JOIN (Q2.SUBSIDIARY_ID = Q3.SUBSIDIARY_ID)
+ 3 - SARG (Q1.LAST_NAME LIKE ?)
+ 6 - START ($INTERNAL_FUNC$() &lt;= Q1.LAST_NAME)
+      STOP (Q1.LAST_NAME &lt;= $INTERNAL_FUNC$())
+      SARG (Q1.LAST_NAME LIKE ?)
+ 8 - START (Q2.SUBSIDIARY_ID = Q3.SUBSIDIARY_ID)
+     START (Q2.EMPLOYEE_ID = Q3.EMPLOYEE_ID)
+      STOP (Q2.SUBSIDIARY_ID = Q3.SUBSIDIARY_ID)
+      STOP (Q2.EMPLOYEE_ID = Q3.EMPLOYEE_ID)</code></pre><p>The <code>UPPER</code> was removed from the <code class="command">where</code>-clause to get the expected result.</p></dd><dt class="oracle default oracle11g oracle12c default"><a href="">Oracle</a></dt><dd class="oracle default oracle11g oracle12c default"><pre><code>---------------------------------------------------------------
+|Id |Operation                    | Name        | Rows | Cost |
+---------------------------------------------------------------
+| 0 |SELECT STATEMENT             |             |  822 |   38 |
+| 1 | <b>NESTED LOOPS OUTER</b>          |             |  822 |   38 |
+| 2 |  TABLE ACCESS BY INDEX ROWID| EMPLOYEES   |    1 |    4 |
+|*3 |   INDEX RANGE SCAN          | EMP_UP_NAME |    1 |      |
+| 4 |  TABLE ACCESS BY INDEX ROWID| SALES       |  821 |   34 |
+|*5 |   INDEX RANGE SCAN          | SALES_EMP   |   31 |      |
+---------------------------------------------------------------
+
+Predicate Information (identified by operation id):
+---------------------------------------------------
+  3 - access(UPPER("LAST_NAME") LIKE 'WIN%')
+      filter(UPPER("LAST_NAME") LIKE 'WIN%')
+  5 - access("E0_"."SUBSIDIARY_ID"="S1_"."SUBSIDIARY_ID"(+)
+        AND  "E0_"."EMPLOYEE_ID"  ="S1_"."EMPLOYEE_ID"(+))</code></pre></dd></dl></div><p>The database retrieves the result from the <code>EMPLOYEES</code> table via <code>EMP_UP_NAME</code> first and fetches the corresponding records from the <code>SALES</code> table for each employee afterwards.</p><div id="tip-get-to-know-your-orm" class="admonition-wrapper"><div class="admonition"><span class="icon"></span><h4>Tip</h4><p class="tweet tip-k">Get to know your ORM and take control of joins.</p><p>Different ORM tools offer different ways to control join behavior. Eager fetching is just one example that is not even provided by every object-relational mapper. It is good practice to implement a small set of samples that explores the capabilities of your ORM. That’s not only a good exercise, it can also serve as reference during development, and will show you unexpected behavior—like duplication of parent records as a side effect of using joins. <a href="/samples/use-the-index-luke-samples.zip">Download the samples</a> to get started.</p></div></div><p>The nested loops join delivers good performance if the driving query returns a small result set. Otherwise, the optimizer might choose an entirely different join algorithm—like the hash join described in the next section, but this is only possible if the application uses a join to tell the database what data it actually needs.</p><div id="links-nested-loops" class="admonition-wrapper"><div class="admonition"><span class="icon"></span><h4>Links</h4><ul><li><p class="short"><a href="/samples/use-the-index-luke-samples.zip">Complete Java, Perl and PHP samples [ZIP]</a></p></li><li><p class="short"><a href="/sql/example-schema"><code>CREATE</code> and <code>INSERT</code> statements for the samples</a></p></li><li><p class="short">Article: “<a href="https://blog.fatalmind.com/2009/12/22/latency-security-vs-performance/">Latency: Security vs. Performance</a>” about network latencies and SQL applications.</p></li></ul></div></div></div><a id="nav-prev" href="/sql/join" title="Previous: The Join Operation">Previous page</a><a id="navbar-prev" href="/sql/join" title="Previous: The Join Operation"></a><a id="nav-next" href="/sql/join/hash-join-partial-objects" title="Next: Hash Join">Next page</a><a id="navbar-next" href="/sql/join/hash-join-partial-objects" title="Next: Hash Join"></a></div><div id="below-article"><p><em>You can’t learn everything in one day. Subscribe the newsletter via <b><a href="https://winand.at/lists">E-Mail</a></b>, <b><a href="https://bsky.app/profile/winand.at">Bluesky</a></b> or <b><a href="/blog/feed">RSS</a></b> to gradually catch up. Have a look at <a href="https://modern-sql.com">modern-⁠sql.com</a> as well.</em></p><h2 class="box-title">About the Author</h2><div id="authorsbio" class="box-body"><img width="110" height="110" src="/static/markuswinand.JSEKkX8C.jpg" alt="Photo of Markus Winand"><p>Markus Winand provides insights into SQL and shows how different systems support it at  <a href="https://modern-sql.com">modern-sql.com</a>. Previously he made <a href="https://use-the-index-luke.com">use-the-index-luke.com</a>, which is still actively maintained. Markus can be hired as trainer, speaker and consultant via <a href="https://winand.at">winand.at</a>.</p></div><div id="promo"><div class="promo-book"><h2 class="box-title">Buy the Book</h2><div class="box-body"><a href="https://sql-performance-explained.com?utm_content=promo-book&amp;utm_source=use-the-index-luke.com&amp;utm_campaign=sec-nested-loops&amp;utm_medium=web"><img width="110" height="168" src="/static/9783950307825_w220.d9ybRqoS.jpg" alt="Cover of “SQL Performance Explained”: Squirrel running on grass"></a><p>The essence of SQL tuning in 200 pages</p><p><a href="//sql-performance-explained.com/?utm_source=use-the-index-luke.com&amp;utm_campaign=sec-nested-loops&amp;utm_medium=web" class="gradient-button rounded-corners">Buy now!</a><br><small>(paperback and/or PDF)</small></p><p class="small">Paperback also available at <a href="https://www.amazon.com/gp/product/3950307826/ref=as_li_tl?ie=UTF8&amp;camp=1789&amp;creative=9325&amp;creativeASIN=3950307826&amp;linkCode=as2&amp;tag=sqlperexp-20&amp;linkId=XTDRWIA3YYYIRNO&amp;m=A1PG4MQR22GK8T">Amazon.com</a>.</p></div></div><div class="promo-gap"></div><div class="promo-service"><h2 class="box-title">Hire Markus</h2><div class="box-body"><p>Markus offers SQL training and consulting for developers working at companies of all sizes. <a href="//winand.at/"><br>Learn&nbsp;more&nbsp;»</a></p></div></div></div></div></div></div><div class="region-sidebar-first"><div class="title-wrap"><h2><a href="/3-minute-quiz">The 3-Minute Quiz</a></h2></div><div id="menu-3-minute-test" style="position: relative"><div id="menu-3-minute-test-clock"></div><a href="/3-minute-quiz">Expert, competent, or just a greenhorn? Test your SQL performance skills in just three minutes. ›</a></div><div class="block"><div class="title-wrap"><h2><a href="/sql/table-of-contents">Table of Contents</a></h2></div><ul class="menu"><li><a href="/sql/preface">Preface</a></li><li><a href="/sql/anatomy">Anatomy of an Index</a></li><li><a href="/sql/where-clause">The Where Clause</a></li><li><a href="/sql/testing-scalability">Performance and Scalability</a></li><li><a href="/sql/join">The Join Operation</a><ul class="menu"><li><a href="" class="active">Nested Loops</a></li><li><a href="/sql/join/hash-join-partial-objects">Hash Join</a></li><li><a href="/sql/join/sort-merge-join">Sort Merge</a></li></ul></li><li><a href="/sql/clustering">Clustering Data</a></li><li><a href="/sql/sorting-grouping">Sorting and Grouping</a></li><li><a href="/sql/partial-results">Partial Results</a></li><li><a href="/sql/dml">Modifying Data</a></li><li><a href="/sql/explain-plan">Execution Plans</a></li><li><a href="/sql/myth-directory">Myth Directory</a></li><li><a href="/sql/example-schema">Example Schema</a></li><li><a href="/sql/glossary">Glossary</a></li></ul></div><div class="block"><div class="title-wrap"><h2><a href="/blog">Latest Blog Posts</a></h2></div><ul class="menu"><li><a href="/blog/2024-12/date-time-prefix-rewrite">Automatic Rewrite of Date and Time Ranges</a></li><li><a href="/blog/2019-04/include-columns-in-btree-indexes">A Close Look at the Index <code>Include</code> Clause</a></li><li><a href="/blog/2018-07/upcoming-advanced-sql-training">Upcoming Training: SQL Performance Kick-Start and modern SQL</a></li><li><a href="/blog/2017-11/spanish-anyone">Spanish Anyone?</a></li><li><a href="/blog/2017-11/cloud-wars-ibm-db2-renaming-major-database-releases">News Review: Cloud Wars, IBM’s Renaming Insanity, and Three Major Releases</a></li><li><a href="/blog/2017-05/new-sql-standard-oracle-122-acidrain">Big News: new SQL standard, cloud wars, ACIDRain</a></li><li><a href="/blog/2016-11/big-news-in-databases">Big News in Databases</a></li><li><a href="/blog/2016-07-29/on-ubers-choice-of-databases">On Uber’s Choice of Databases</a></li><li><a href="/blog/2015-02/modern-sql">Modern SQL in PostgreSQL [and other databases]</a></li></ul></div><div class="block"><div class="title-wrap"><h2><a href="/shop">Geek Ware</a></h2></div><ul class="menu"><li><a href="/shop#sticker-package">Stickers</a></li><li><a href="/shop#coaster-package">Coasters</a></li><li><a href="/shop#pdf-package">Books</a></li><li><a href="/shop#mug-package">Mugs</a></li></ul></div></div></div></div></div></div><div id="prefooter"><div><h2>Connect with Markus Winand</h2><a id="mailinglist" href="https://winand.at/lists"><span>Subscribe mailinglists</span></a><a id="rss" href="https://use-the-index-luke.com/blog/feed"><span>Subscribe the RSS feed</span></a><a id="linkedin" href="https://at.linkedin.com/in/markuswinand/"><span>Markus Winand on LinkedIn</span></a><a id="xing" href="https://www.xing.com/profile/Markus_Winand"><span>Markus Winand on XING</span></a><a id="mastodon" rel="me" href="https://mastodon.social/@MarkusWinand"><span>Markus Winand on Mastodon</span></a><a id="bluesky" href="https://bsky.app/profile/winand.at"><span>Markus Winand on Bluesky</span></a></div></div><div id="page-closure"><div class="region-page-closure">Copyright 2010-2026 <a href="https://winand.at/">Markus Winand</a>. All righs reserved.<br><a href="/legal">Legal</a> | <a href="/contact">Contact</a> | <a href="/legal/no-warranty">NO WARRANTY</a> | <a href="/legal/trademarks">Trademarks</a> | <a href="/legal/privacy">Privacy and GDPR</a></div></div><script src="/static/util.dpe1Xaua.js"></script></body></html>
