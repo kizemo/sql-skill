@@ -1,0 +1,18 @@
+# 默认按文本处理,仓库内存 LF(Windows 上 core.autocrlf=true 会把工作区改成 CRLF)
+* text=auto eol=lf
+
+# 明确需要 LF 的:bash 脚本带 CRLF 会在 Linux 上 `env: 'bash\r'` 直接崩
+*.sh text eol=lf
+*.py text eol=lf
+*.md text eol=lf
+*.json text eol=lf
+*.jsonl text eol=lf
+*.ps1 text eol=crlf
+
+# 二进制,不做行尾转换
+*.html binary
+*.png binary
+*.jpg binary
+*.ico binary
+*.db binary
+*.sqlite binary

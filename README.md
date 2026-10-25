@@ -67,7 +67,7 @@
 └────────────────────────────────────────────────────────┘
 ```
 
-**实测(用 [skill-forge](https://github.com/kizemo/skill-optimizer) 自己的 tokenizer,不是拍脑袋):**
+**实测(用 [skill-forge](https://github.com/kizemo/skill-forge) 自己的 tokenizer,不是拍脑袋):**
 
 | 层级 | v0.1 | v0.3 | 降幅 | 预算 |
 |---|---:|---:|---:|---|
@@ -116,7 +116,7 @@
 
 ### 4.1 知识覆盖率 —— 1090 题实战题库
 
-用 [civilian7](https://github.com/) 的 **1090 道真实 SQL 题**(beginner / intermediate / advanced)做覆盖率评测:每道题按 `tags` + `metadata.concepts` + `type` + 标题正文 4 路匹配,看能不能定位到正确的章节。
+用 [civilian7](https://github.com/civilian7/sql-tutorial) 的 **1090 道真实 SQL 题**(beginner / intermediate / advanced)做覆盖率评测:每道题按 `tags` + `metadata.concepts` + `type` + 标题正文 4 路匹配,看能不能定位到正确的章节。
 
 ```
 python tools/eval_civilian7.py --mode skill-aware
@@ -275,7 +275,7 @@ sql-skill/
 | [gbrain](https://github.com/garrytan/gbrain) | 0.60+ | 可选 | semantic recall + 知识同步 |
 | Anthropic API | — | 可选 | 仅 `--mode claude-api` 评测用 |
 
-**知识来源**:[Use The Index, Luke!](https://use-the-index-luke.com/)(8 篇离线镜像)· [civilian7](https://github.com/) 1090 题 · [awesome-postgres](https://github.com/) · [SQL Style Guide](https://github.com/mattm/sql-style-guide)
+**知识来源**:[Use The Index, Luke!](https://use-the-index-luke.com/)(8 篇离线镜像)· [civilian7](https://github.com/civilian7/sql-tutorial) 1090 题 · [awesome-postgres](https://github.com/dhamaniasad/awesome-postgres) · [SQL Style Guide](https://github.com/mattm/sql-style-guide)
 
 ---
 
@@ -331,10 +331,10 @@ git push origin main
 - [PostgreSQL 官方文档](https://www.postgresql.org/docs/) —— 语法与行为的权威来源
 - [Use The Index, Luke!](https://use-the-index-luke.com/) —— Markus Winand,索引与执行计划
 - [Mark Mazur SQL Style Guide](https://github.com/mattm/sql-style-guide) —— 风格铁律
-- [civilian7](https://github.com/) —— 1090 道实战题库
+- [civilian7](https://github.com/civilian7/sql-tutorial) —— 1090 道实战题库
 - [evidence-skill](https://github.com/kizemo/evidence-skill) —— 业务侧互补
 - [gbrain](https://github.com/garrytan/gbrain) —— semantic RAG 与知识同步基础设施
-- [skill-optimizer](https://github.com/kizemo/skill-optimizer) —— token 成本审计与 validator
+- [skill-forge](https://github.com/kizemo/skill-forge) —— token 成本审计与 validator
 
 ---
 
