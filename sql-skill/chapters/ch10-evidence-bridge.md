@@ -2,7 +2,7 @@
 
 ## Core Idea
 
-sql-skill v1.0 沉淀 10 章通用 SQL 知识(语法 / 索引 / JOIN / 窗口 / CTE / 聚合 / 集合 / 反模式),与 [evidence-skill](../../evidence/evidence-skill/SKILL.md) 业务侧(BI / 中文 PG schema / nginx / FDW / MCP)严格互补。**ch10 不重写 evidence-skill 18 章**,只讲三件事:① **SQL Agent 范式**(MCP + 4 道防线);② **评测集**(civilian7 1065 题筛选);③ **v1.0 沉淀清单**(ch01-ch10 + 4 supporting 文件)。**核心铁律**:写 SQL / 排错 / 调性能,先查 cheatsheet,再翻对应 chapter,最后查 evidence-skill 业务侧 — **三层 lookup 顺序固定**。
+sql-skill v1.0 沉淀 11 章通用 SQL 知识(语法 / 索引 / JOIN / 窗口 / CTE / 聚合 / 集合 / 反模式 / 多方言),与 [evidence-skill](../../evidence/evidence-skill/SKILL.md) 业务侧(BI / 中文 PG schema / nginx / FDW / MCP)严格互补。**ch10 不重写 evidence-skill 18 章**,只讲三件事:① **SQL Agent 范式**(MCP + 4 道防线);② **评测集**(civilian7 1065 题筛选);③ **v1.0 沉淀清单**(ch01-ch11 + 4 supporting 文件)。**核心铁律**:写 SQL / 排错 / 调性能,先查 cheatsheet,再翻对应 chapter,最后查 evidence-skill 业务侧 — **三层 lookup 顺序固定**。
 
 ## Frameworks Introduced
 
@@ -30,6 +30,10 @@ sql-skill v1.0 沉淀 10 章通用 SQL 知识(语法 / 索引 / JOIN / 窗口 / 
 ### §6 sql-skill v1.0 沉淀清单— 1 条铁律
 
 - **三层 lookup 顺序固定**:① cheatsheet(13 决策表 + 18 关键经验)→ ② 对应 chapter(ch01-ch10)→ ③ evidence-skill 业务侧(ch05/ch07/ch14/ch16);reviewer 5 秒判断走哪一层。
+
+### §7 多 DB 协作(sql-skill ch11)— 1 条铁律
+
+- **跨方言 JOIN 走"查询门面"不走联邦**:`postgres_fdw` 的远端**必须是 PostgreSQL**,连不了 MySQL / Oracle / SQL Server。异构源 ≥ 2 且要联查时,**把需要联查的数据同步到 PG 中间层**,对外只暴露一种方言 —— 用**一致性(同步延迟)换简单性(单一 dialect)**。方言语义地雷(Oracle 空串=NULL、MySQL/SQL Server 隐式转换方向)详 [ch11](ch11-multi-db.md)。
 
 ## Key Concepts
 
@@ -68,6 +72,12 @@ sql-skill v1.0 沉淀 10 章通用 SQL 知识(语法 / 索引 / JOIN / 窗口 / 
 - **9 段结构**:每 chapter 9 段固定
 - **v1.0 完整版**:10 章 + 4 辅助文件
 
+### §7 多 DB 协作
+
+- **查询门面**:异构源同步到 PG 中间层,对外单一 dialect
+- **联邦边界**:`postgres_fdw` 只连 PG;跨方言需第三方扩展
+- **方言地雷**:Oracle 空串=NULL / MySQL-SQLServer 隐式转换文本→数字
+
 ## Mental Models
 
 ### §1 边界
@@ -99,6 +109,11 @@ sql-skill v1.0 沉淀 10 章通用 SQL 知识(语法 / 索引 / JOIN / 窗口 / 
 - **三层 lookup 是"快速决策"**:不要逐章翻,先 cheatsheet 决策表,再针对性 chapter。
 - **v1.0 是"完整 10 章"**:Phase 2 + 3a + 3b + 3c 4 阶段沉淀。
 
+### §7 多 DB 协作
+
+- **查询门面的本质是"用一致性换简单性"**:同步延迟换取单一方言。
+- **联邦查询是"运行时跨库"**:谓词下推不全 + 无跨库事务 → 只在同构 PG 场景用。
+
 ## Anti-patterns
 
 ### §1
@@ -128,6 +143,12 @@ sql-skill v1.0 沉淀 10 章通用 SQL 知识(语法 / 索引 / JOIN / 窗口 / 
 
 - ❌ 写 SQL 不查 cheatsheet → 13 决策表先查,再翻 chapter
 - ❌ 业务侧雷区查 sql-skill 通用层 → 走 evidence-skill ch05/ch07/ch14/ch16
+
+### §7
+
+- ❌ 用 `postgres_fdw` 连 MySQL / Oracle / MSSQL → 协议不支持 → 同步门面
+- ❌ 跨库 JOIN 要求跨库事务 → 联邦无统一事务 → 接受最终一致或改架构
+- ❌ 跨方言迁移不查空串 / 隐式转换 → 静默丢数据 / 索引断 → 必查 ch11 §6
 
 ## Code Examples
 
@@ -290,10 +311,11 @@ ls "E:/obsidian/SQL/02-sql-tutorial-civilian7/exercises/beginner/"
 | ch08-indexes-perf.md | 405 行 | Phase 2 |
 | ch09-antipatterns.md | 429 行 | Phase 3a |
 | ch10-evidence-bridge.md | ~250 行 | Phase 3c |
+| ch11-multi-db.md | ~355 行 | Phase 5 |
 
 ## Key Takeaways
 
-1. **sql-skill v1.0 = 10 章 + 4 辅助文件**:ch01-ch10 + SKILL/glossary/patterns/cheatsheet;与 evidence-skill 18 章严格互补
+1. **sql-skill v1.0 = 11 章 + 4 辅助文件**:ch01-ch11 + SKILL/glossary/patterns/cheatsheet;与 evidence-skill 18 章严格互补
 2. **三层 lookup 顺序固定**:cheatsheet → chapter → evidence-skill;不要逐章翻
 3. **SQL Agent 4 道防线必齐**:readonly + sqlglot + statement_timeout + LIMIT;任一被攻破其他兜底
 4. **ch10 不重写 evidence-skill 18 章内容**:只引 + 协作范式;中文 schema / FDW / BI 性能 / MCP 部署细节走 evidence-skill
@@ -302,11 +324,12 @@ ls "E:/obsidian/SQL/02-sql-tutorial-civilian7/exercises/beginner/"
 7. **评测源沿用 civilian7 1065 题**:不重写题库筛选;Phase 4+ 自动化评测
 8. **schema 路由 + 中文 schema 自动 wrap**:多 DB 场景 + 假名修复是 agent 跑 SQL 的标准前置
 9. **v1.0 沉淀路径清晰**:Phase 2(3 章)→ Phase 3a(ch09)→ Phase 3b(ch02-ch05)→ Phase 3c(ch06/ch10);总行数 ~3700
-10. **未来扩展(Phase 4+)**:自动化评测 / 多 DB 支持(MySQL/Oracle/SQL Server) / 与 evidence-skill 联动测试
+10. **多 DB 协作已落地(ch11)**:跨方言 JOIN 走查询门面(同步到 PG 中间层),`postgres_fdw` 只连 PG;方言地雷详见 ch11 §1-§6
 
 ## Connects To
 
-- **sql-skill ch01-ch10**:所有 chapter(10 章完整版,详 Connects To 段)
+- **sql-skill ch01-ch11**:所有 chapter(11 章完整版,详 Connects To 段)
+- **sql-skill ch11**:多方言 MySQL / Oracle / SQL Server(语义差异 / 索引模型 / 反模式 / 跨库协作)
 - **evidence-skill ch01**:quickstart + connection.yaml(schema 路由)
 - **evidence-skill ch05**:中文 schema 业务侧权威(13+ page 假名清单)
 - **evidence-skill ch07**:postgres_fdw 跨 DB(5 步 SQL + 2-segment path)
