@@ -1,0 +1,52 @@
+{
+  "mode": "skill-aware",
+  "total_problems": 1090,
+  "load_time_seconds": 1.42,
+  "skill_aware": {
+    "total_problems": 1090,
+    "matched_problems": 1090,
+    "unmatched_problems": 0,
+    "coverage_pct": 100.0,
+    "chapters_covered": 9,
+    "per_chapter_count": {
+      "ch01-grammar": 918,
+      "ch02-joins": 280,
+      "ch03-window-functions": 245,
+      "ch04-cte-recursion": 267,
+      "ch05-aggregates": 468,
+      "ch06-set-ops": 101,
+      "ch07-pg-specific": 139,
+      "ch08-indexes-perf": 44,
+      "ch09-antipatterns": 59
+    },
+    "per_difficulty_per_chapter": {
+      "advanced": {
+        "ch05-aggregates": 163,
+        "ch03-window-functions": 193,
+        "ch04-cte-recursion": 211,
+        "ch02-joins": 107,
+        "ch07-pg-specific": 76,
+        "ch01-grammar": 251,
+        "ch08-indexes-perf": 44,
+        "ch09-antipatterns": 2
+      },
+      "beginner": {
+        "ch05-aggregates": 156,
+        "ch01-grammar": 342,
+        "ch02-joins": 32,
+        "ch09-antipatterns": 34
+      },
+      "intermediate": {
+        "ch05-aggregates": 149,
+        "ch02-joins": 141,
+        "ch01-grammar": 325,
+        "ch07-pg-specific": 63,
+        "ch03-window-functions": 52,
+        "ch04-cte-recursion": 56,
+        "ch06-set-ops": 101,
+        "ch09-antipatterns": 23
+      }
+    },
+    "unmatched_samples": []
+  }
+}
