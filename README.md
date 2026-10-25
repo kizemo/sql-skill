@@ -1,423 +1,341 @@
-# sql-skill v2.2 — 通用 SQL 专业度 Skill
+# sql-skill
 
-> **企业 PostgreSQL 视角的通用 SQL 知识沉淀**,与 [evidence-skill](https://github.com/kizemo/evidence-skill) 业务侧严格互补。
-> 10 章完整版 + 4 辅助文件 + 4 通道动态同步 + gbrain RAG 增强(2026-10-15)
+> **把「企业级 SQL 工程知识」压进 agent 的上下文里 —— 而且只花 2,105 token。**
+> PostgreSQL / MySQL / Oracle / SQL Server · 11 章 + 5 辅助文件 · 4,375 行章节正文 · 全库 5,648 行
+> 配套 [evidence-skill](https://github.com/kizemo/evidence-skill) 业务侧,两者严格互补。
 
 [![GitHub](https://img.shields.io/badge/GitHub-kizemo%2Fsql--skill-blue)](https://github.com/kizemo/sql-skill)
-[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-14%2B-blue)](https://www.postgresql.org/)
-[![Claude Code](https://img.shields.io/badge/Claude%20Code-compatible-blueviolet)](https://claude.com/claude-code)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green)](LICENSE)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-14%2B-336791)](https://www.postgresql.org/)
+[![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB)](https://www.python.org/)
+[![Claude Code](https://img.shields.io/badge/Claude_Code-compatible-blueviolet)](https://claude.com/claude-code)
+[![Tokens](https://img.shields.io/badge/trigger_cost-2%2C105_tok-success)](https://github.com/kizemo/sql-skill)
 
 ---
 
-## 一、sql-skill 是什么
+## TL;DR
 
-`sql-skill` 是一个**通用 SQL 编写专业度 Skill**,沉淀企业 PostgreSQL 视角的 SQL 知识(语法 / 索引 / JOIN / 窗口 / CTE / 聚合 / 集合 / 反模式),让 Claude / OpenClaw agent 写 SQL 更专业、更准确。
+通用大模型写 SQL 有三个系统性问题:**语法会写,语义会错;记住了却找不到;知道了却塞不下。**
 
-**与 [evidence-skill](https://github.com/kizemo/evidence-skill) 互补**:
-- **sql-skill**:PostgreSQL 通用视角(10 章,~5161 行)
-- **evidence-skill**:Evidence BI / 中文 PG schema / nginx / FDW / MCP 业务侧(18 章)
+`sql-skill` 对这三件事各给一个答案:
 
-### 1.1 v2.2 核心能力
+| 问题 | 解法 | 实测 |
+|---|---|---|
+| 不知道该用哪种索引 / JOIN / 窗口函数 | 11 章结构化知识 + 13 张决策表 + 25+ 反模式 | 覆盖 civilian7 **1090 题 100%** |
+| 通用知识库一次性灌进上下文 = 烧钱 | **渐进式披露**:index 层只留路由,正文按需读 | 单次触发 **5,734 → 2,105 tok(-63%)** |
+| 知识写完就过期 | 4 通道自动同步进 gbrain,写完即同步 | **写文件 → brain 可查 ≈ 1 秒** |
 
-| 维度 | v2.2 实现 |
-|---|---|
-| **知识覆盖** | 10 章 + 4 辅助文件 + 8 篇 luke 关键章节(~5161 行 + 252K luke 引用) |
-| **检索方式** | **双模式**:gbrain semantic recall + Read+Grep 全文检索 |
-| **新增知识同步** | **4 通道**:PostToolUse hook / Cron / Agent 主动 / Manual |
-| **evidence-skill 联动** | ch10 边界固化,业务侧雷区走 evidence-skill |
+> 这不是一个「更大的 prompt」,而是一份**被测量过、被评测过、能自我更新的** SQL 知识资产。
 
-### 1.2 10 章索引
+---
+
+## 一、它解决什么
+
+不是「教模型写 SQL」,而是补上模型**恰好最弱**的那一段:工程判断。
+
+| 通用模型的典型失败 | sql-skill 的答案 | 在哪 |
+|---|---|---|
+| `WHERE col = NULL` 恒 0 行,模型不报错直接给答案 | NULL 三值逻辑 + `IS NULL` 改写 | [ch01 §3](sql-skill/chapters/ch01-grammar.md) |
+| `OFFSET 100000` 深分页,模型照抄不质疑 | keyset 分页 + 为什么 OFFSET 会线性变慢 | [ch08 §5](sql-skill/chapters/ch08-indexes-perf.md) |
+| 索引建了但没走 —— 列上套了函数 | WHERE 索引失效 3 类 + 各自修法 | [ch08 §2](sql-skill/chapters/ch08-indexes-perf.md) |
+| 迁移到 Oracle 后 `= ''` 静默丢数据 | 四方言语义地雷对照表 | [ch11](sql-skill/chapters/ch11-multi-db.md) |
+| 中文列名不双引号 → `column does not exist` | 中文 schema 雷区 + 假名修复流程 | [ch07 §5](sql-skill/chapters/ch07-pg-specific.md) |
+| `EXPLAIN` 读不懂,只看 estimated rows | 估算 ≠ 实际,rows mismatch 怎么办 | [ch08 §6](sql-skill/chapters/ch08-indexes-perf.md) |
+
+**边界很诚实**:只讲「通用 SQL 工程判断」。业务侧(Evidence BI / nginx / FDW 部署 / 中文 schema 假名映射明细 / MCP)归 [evidence-skill](https://github.com/kizemo/evidence-skill),ch10 把这条边界固化成铁律。
+
+---
+
+## 二、内容结构:渐进式披露
+
+这是本项目**最核心的设计**。多数「知识库 skill」失败在两点:要么正文太长(每次触发都烧钱),要么拆得太碎(agent 找不到该读哪页)。
+
+```
+┌─ index 层 ─────────────────────────────────────────────┐
+│  frontmatter:description + triggers + 元数据            │  每会话都付
+│  100 tok  ← 预算 ~100                                  │
+└────────────────────────────────────────────────────────┘
+                        ↓ 触发时
+┌─ load 层 ──────────────────────────────────────────────┐
+│  SKILL.md 正文:12 大框架速查 + Gotchas + 章节索引         │  2,005 tok
+│  预算 ~5,000                                           │
+└────────────────────────────────────────────────────────┘
+                        ↓ 按需读
+┌─ files 层 ─────────────────────────────────────────────┐
+│  chapters/ch01-ch11.md  ·  supporting/*.md              │  无限预算
+│  references/topic-index.md · references/retrieval.md   │  只读用得上的
+└────────────────────────────────────────────────────────┘
+```
+
+**实测(用 [skill-forge](https://github.com/kizemo/skill-optimizer) 自己的 tokenizer,不是拍脑袋):**
+
+| 层级 | v0.1 | v0.3 | 降幅 | 预算 |
+|---|---:|---:|---:|---|
+| index(每会话都付) | 231 tok | **100 tok** | **-57%** | ~100 ✅ |
+| load(触发时) | 5,503 tok | **2,005 tok** | **-64%** | ~5,000 ✅ |
+| **单次触发合计** | **5,734 tok** | **2,105 tok** | **-63%** | — |
+| validator 警告 | 11 条 | **0 条** | — | — |
+
+> 对比:`evidence-skill` 触发成本 1,556 tok。**sql-skill 用一半的价格覆盖 4 个方言 + 全部通用 SQL 工程判断。**
+
+设计细节见 [`docs/audit/`](docs/audit/),改动逐条列在 [CHANGELOG](docs/CHANGELOG.md)。
+
+---
+
+## 三、章节索引(11 章)
+
+每章统一 9 段结构(Core Idea → Frameworks → Key Concepts → Mental Models → Anti-patterns → Code Examples → Reference Tables → Key Takeaways → Connects To),**结构一致 = agent 能预测每章长什么样**。
 
 | # | 章节 | 主题 | 行数 |
-|---|---|---|---|
-| 1 | [ch01-grammar.md](sql-skill/chapters/ch01-grammar.md) | SQL 语法铁律(执行顺序 / 别名 / NULL / 风格) | 256 |
-| 2 | [ch02-joins.md](sql-skill/chapters/ch02-joins.md) | JOIN 7 种 + 性能差异 | 450 |
-| 3 | [ch03-window-functions.md](sql-skill/chapters/ch03-window-functions.md) | 窗口函数(OVER / RANK / LAG-LEAD / 帧) | 488 |
-| 4 | [ch04-cte-recursion.md](sql-skill/chapters/ch04-cte-recursion.md) | CTE / 递归 CTE / 物化 | 454 |
-| 5 | [ch05-aggregates.md](sql-skill/chapters/ch05-aggregates.md) | 聚合 / GROUP BY / HAVING / FILTER | 448 |
-| 6 | [ch06-set-ops.md](sql-skill/chapters/ch06-set-ops.md) | 集合操作(UNION / INTERSECT / EXCEPT) | 352 |
-| 7 | [ch07-pg-specific.md](sql-skill/chapters/ch07-pg-specific.md) | PG 特有(JSONB / array / GIN / FDW / 中文 schema) | 322 |
-| 8 | [ch08-indexes-perf.md](sql-skill/chapters/ch08-indexes-perf.md) | 索引与性能 | 405 |
-| 9 | [ch09-antipatterns.md](sql-skill/chapters/ch09-antipatterns.md) | SQL 反模式综合(7 类 25+) | 429 |
-| 10 | [ch10-evidence-bridge.md](sql-skill/chapters/ch10-evidence-bridge.md) | SQL Agent 范式 + evidence-skill 协作 | 314 |
-| — | [SKILL.md](sql-skill/SKILL.md) | skill 入口 + 12 framework + chapter index | — |
-| — | [cheatsheet.md](sql-skill/supporting/cheatsheet.md) | 13 决策表 + 18 关键经验 | — |
-| — | [glossary.md](sql-skill/supporting/glossary.md) | 关键术语 | — |
-| — | [patterns.md](sql-skill/supporting/patterns.md) | 8 模式 + 反模式总表 | — |
+|---|---|---|---:|
+| 1 | [ch01-grammar.md](sql-skill/chapters/ch01-grammar.md) | SQL 语法铁律:8 子句执行顺序 / 别名作用域 / NULL 三值逻辑 / 风格铁律 | 256 |
+| 2 | [ch02-joins.md](sql-skill/chapters/ch02-joins.md) | JOIN 7 种 + 性能差异 + N+1 反模式 | 450 |
+| 3 | [ch03-window-functions.md](sql-skill/chapters/ch03-window-functions.md) | OVER / PARTITION BY / ROW_NUMBER / RANK / LAG-LEAD / 帧子句 / 命名窗口 | 488 |
+| 4 | [ch04-cte-recursion.md](sql-skill/chapters/ch04-cte-recursion.md) | WITH / WITH RECURSIVE / MATERIALIZED / CTE vs 子查询 vs 临时表 | 454 |
+| 5 | [ch05-aggregates.md](sql-skill/chapters/ch05-aggregates.md) | 聚合 / GROUP BY / HAVING / FILTER / ROLLUP-CUBE / GROUPING SETS | 448 |
+| 6 | [ch06-set-ops.md](sql-skill/chapters/ch06-set-ops.md) | UNION / UNION ALL / INTERSECT / EXCEPT + 与 JOIN 转换 | 352 |
+| 7 | [ch07-pg-specific.md](sql-skill/chapters/ch07-pg-specific.md) | JSONB / array / GIN / postgres_fdw / 中文 schema 雷区 | 322 |
+| 8 | [ch08-indexes-perf.md](sql-skill/chapters/ch08-indexes-perf.md) | 索引结构 / WHERE 索引失效 / JOIN 算法 / 排序分组 / 分页窗口 / EXPLAIN ANALYZE | 405 |
+| 9 | [ch09-antipatterns.md](sql-skill/chapters/ch09-antipatterns.md) | 反模式综合:建模 / 查询 / 索引 / NULL / 字符串日期 / 性能 / 安全 **7 类 25+** | 429 |
+| 10 | [ch10-evidence-bridge.md](sql-skill/chapters/ch10-evidence-bridge.md) | SQL Agent 范式(MCP + 4 道防线)/ evidence-skill 协作 / 评测 | 337 |
+| 11 | [ch11-multi-db.md](sql-skill/chapters/ch11-multi-db.md) | **多方言**:MySQL / Oracle / SQL Server 语义地雷 + 跨库协作 | 434 |
+
+**辅助文件 ×5**(写 SQL 的第一站,不必翻章节):
+
+| 文件 | 内容 | 何时读 |
+|---|---|---|
+| [supporting/cheatsheet.md](sql-skill/supporting/cheatsheet.md) | 13 张决策表 + 18 条关键经验 | **写 SQL / 排错第一站** |
+| [supporting/glossary.md](sql-skill/supporting/glossary.md) | 166 条术语定义 | 查术语 |
+| [supporting/patterns.md](sql-skill/supporting/patterns.md) | 8 大模式 + 反模式总表 | 套现成模式 |
+| [references/topic-index.md](sql-skill/references/topic-index.md) | 99 个术语 → 章节定位 | 不知道读哪章 |
+| [references/retrieval.md](sql-skill/references/retrieval.md) | 跨 vault 检索路径与优先级 | 要查 skill 外的资料 |
 
 ---
 
-## 二、部署方法
+## 四、实测:不是宣称,是测出来的
 
-### 2.1 方式 A:本地 Claude Code 部署(推荐)
+### 4.1 知识覆盖率 —— 1090 题实战题库
 
-#### 步骤 1:克隆仓库
+用 [civilian7](https://github.com/) 的 **1090 道真实 SQL 题**(beginner / intermediate / advanced)做覆盖率评测:每道题按 `tags` + `metadata.concepts` + `type` + 标题正文 4 路匹配,看能不能定位到正确的章节。
+
+```
+python tools/eval_civilian7.py --mode skill-aware
+# [OK] skill-aware: 100.0% coverage (1090/1090)
+```
+
+| 章节 | 覆盖题数 | | 章节 | 覆盖题数 |
+|---|---:|---|---|---:|
+| ch01 语法 | 918 | | ch06 集合操作 | 101 |
+| ch05 聚合 | 468 | | ch09 反模式 | 59 |
+| ch02 JOIN | 280 | | ch08 索引性能 | 44 |
+| ch04 CTE | 267 | | ch03 窗口函数 | 245 |
+| ch07 PG 特有 | 139 | | ch10/ch11 | 实战题库未覆盖 |
+
+### 4.2 Baseline 自检 —— reference SQL 真能跑
+
+拿题库自带的 reference SQL 在真实 SQLite(32 张电商表)上跑,验证**题库本身**可执行:
+
+```
+python tools/eval_civilian7.py --mode baseline --db <playground.db>
+# [OK] baseline: 95.6% SQL 可执行 (282/300)
+```
+
+剩下的 5% 已分类:方言专属构造(`PROCEDURE` / `TRIGGER` / `DELIMITER`)、SQLite 不支持的 `GROUP_CONCAT(DISTINCT x, sep)`,以及**故意触发约束违例**的题(那批题的目的就是演示报错)。
+
+### 4.3 执行准确率 A/B —— skill 到底帮上忙没有
+
+让模型真的去答 SQL,把生成的 SQL 拿去 SQLite 执行,和 reference SQL 的**结果集**对拍(不是比字符串):
 
 ```bash
+python tools/eval_civilian7.py --mode claude-api --db <playground.db> --api-sample 20 --seed 42 --context none
+python tools/eval_civilian7.py --mode claude-api --db <playground.db> --api-sample 20 --seed 42 --context skill
+```
+
+固定 `--seed` 保证两轮抽到同一批题,否则 A/B 不可比。结果见 [`docs/audit/`](docs/audit/)。
+
+---
+
+## 五、快速开始
+
+### 5.1 安装(3 步)
+
+```bash
+# 1. 克隆
 git clone https://github.com/kizemo/sql-skill.git
 cd sql-skill
-```
 
-#### 步骤 2:把 sql-skill 复制到 Obsidian vault(可选,用于 Read+Grep 模式)
-
-```bash
-# 推荐:放在 Obsidian SQL 子 vault 的 08-sql-skill/ 目录
-cp -r sql-skill/ E:/obsidian/SQL/08-sql-skill/
-
-# Obsidian 打开 vault,即可看到 10 章 + 4 辅助文件
-```
-
-#### 步骤 3:Claude Code 配置 SKILL.md
-
-Claude Code 自动加载以下位置:
-- `~/.claude/skills/<name>/SKILL.md`(用户全局)
-- `<project>/.claude/skills/<name>/SKILL.md`(项目级)
-
-```bash
-# 推荐:用户全局安装
+# 2. 装到 Claude Code 全局 skills 目录
 mkdir -p ~/.claude/skills/sql-skill
 cp -r sql-skill/* ~/.claude/skills/sql-skill/
 
-# 验证
+# 3. 验证
 ls ~/.claude/skills/sql-skill/
-# 应该看到: SKILL.md  chapters/  supporting/  INDEX.md
+# SKILL.md  chapters/  supporting/  references/
 ```
 
-#### 步骤 4:配置 Obsidian vault 路径(可选,Read+Grep 模式需要)
+Claude Code 会自动发现 `SKILL.md` 并按 `description` + `triggers` 路由。**不需要任何 API key、不需要 pip install、不需要起服务** —— 纯 markdown + 标准库 Python。
 
-在 SKILL.md 的 frontmatter 或 cheatsheet 中确认 vault 路径:
+### 5.2 验证
 
-```yaml
----
-name: sql-skill
-description: "通用 SQL 编写专业度 Skill ..."
----
-```
+直接问:
 
-vault 默认路径:`E:/obsidian/SQL/`(可在 SKILL.md 调整)
+> 「大 OFFSET 分页怎么优化」
 
-#### 步骤 5:验证部署
+预期行为:先查 `cheatsheet.md` 决策表 → 命中 [ch08 §5](sql-skill/chapters/ch08-indexes-perf.md) → 给出 keyset 分页 `WHERE id > last_id LIMIT N`,并说明 OFFSET 的代价随 offset 线性增长。
 
-问 Claude 一个 SQL 问题:
+### 5.3 可选:接 Obsidian vault / gbrain
 
-> "如何优化大 OFFSET 性能"
-
-Claude 应该:
-1. 优先查 `cheatsheet.md` Layer 1 决策快查
-2. 查 `chapters/ch08-indexes-perf.md` Layer 2 deep dive
-3. 用 luke `sql-partial-results-top-n-queries.html` Reference 章节
-4. 给出 keyset pagination `WHERE id > last_id LIMIT N` 答案
-
-### 2.2 方式 B: gbrain RAG 增强部署(可选,推荐)
-
-如果希望 Claude 通过 gbrain semantic recall(而非 Read+Grep)检索知识,需要:
-
-#### 前提条件
-
-- 已安装 [gbrain](https://github.com/garrytan/gbrain) v0.60+
-- gbrain MCP 已 connected(查 `~/.claude/settings.json` 是否有 `gbrain@gbrain` 启用)
-- `default` source 是唯一 source(避免 source-guard 锁)
-
-#### ingest sql-skill 到 gbrain
-
-```bash
-# 1. 验证 gbrain 状态
-gbrain sources list  # 应该只看到 default
-
-# 2. 如果有 sql-vault 残留,先删除(避免 source-guard)
-gbrain sources remove sql-vault --confirm-destructive
-
-# 3. ingest sql-skill 10 章(用本仓库的工具)
-cd sql-skill/tools
-# 详见 § 三.4 通道 D 手动 ingest
-
-# 或通过 Claude agent:
-# 让 Claude 用 mcp__plugin_gbrain_gbrain__put_pages 批量 ingest
-```
-
-#### 验证 gbrain recall
-
-问 Claude:
-> "JSONB GIN 索引大小如何优化"
-
-Claude 会通过 `mcp__gbrain_gbrain__query` 召回 ch07-pg-specific + ch08-indexes-perf,返回 `jsonb_path_ops` operator class 的建议。
-
-### 2.3 方式 C: 仅 git clone 不配置(轻量)
-
-如果只想要 sql-skill 文件供参考,不需要 Claude 自动加载:
-
-```bash
-git clone https://github.com/kizemo/sql-skill.git
-# 浏览器或编辑器阅读 sql-skill/chapters/ 即可
-```
+| 场景 | 做法 |
+|---|---|
+| 想用 Obsidian 检索 | `cp -r sql-skill/ E:/obsidian/SQL/08-sql-skill/` |
+| 想用 gbrain semantic recall | 见 [`docs/DEPLOY.md`](docs/DEPLOY.md) |
 
 ---
 
-## 三、4 通道动态同步机制
+## 六、知识同步:4 通道
 
-知识库内容变动后(sql-skill 10 章 / 4 辅助文件 / Obsidian 文档),通过 4 通道自动同步:
+知识写完会过期。`sql-skill` 的知识可以来自 Claude 写、Obsidian 改、批量导入,所以做了 4 条通道:
 
-### 3.1 通道 A:Claude Code PostToolUse hook(自动)
-
-**已写**:`tools/post-write-auto-sync.py`
-**已注册**:`~/.claude/settings.json` 包含 PostToolUse 段
-**触发**:Claude 写新 chapter / 编辑文件到 `E:/obsidian/SQL/08-sql-skill/`
-**机制**:5min debounce → 写 queue 文件 `~/.claude/.cache/sql-skill-sync-queue/`
-**消费**:下个 Claude session 启动时(通道 C)
-
-```json
-// settings.json 已有
-"PostToolUse": [
-  {
-    "matcher": "Write|Edit|MultiEdit",
-    "hooks": [
-      {
-        "type": "command",
-        "command": "C:\\Python314\\python.exe \"F:\\soft\\00selfmade\\sql-skill\\tools\\post-write-auto-sync.py\"",
-        "timeout": 60
-      }
-    ]
-  }
-]
+```
+Claude 写 .md ──► A. PostToolUse hook ──► gbrain put_page   (≈1s,即写即同步)
+Obsidian 外部改 ─► B. Cron 每日 02:00 ──► gbrain sweep
+Session 启动 ─────► C. 消费 queue ─────► gbrain put_page    (兜底)
+人工/批量 ────────► D. Manual ─────────► gbrain put_page
 ```
 
-### 3.2 通道 B:Cron 周期同步(每日 02:00)
-
-**已写**:`tools/cron-sync-sql-skill.sh` + `tools/register-cron-sync.ps1`
-
-**注册**:
-```powershell
-PowerShell -ExecutionPolicy Bypass -File F:\soft\00selfmade\sql-skill\tools\register-cron-sync.ps1
-```
-
-**任务**:
-- 名称:`gbrain-sql-skill-sync`
-- 触发:每日 02:00
-- 命令:`bash F:/soft/00selfmade/sql-skill/tools/cron-sync-sql-skill.sh`
-- 日志:`F:\soft\00selfmade\sql-skill\logs\sync-cron.log`
-
-**适用**:Obsidian app 编辑(外部,Claude 看不到)
-
-### 3.3 通道 C:Agent 主动消费 queue(每次 Claude 启动)
-
-**已写**:`tools/sync-queue-consumer.py`
-**已注册**:`~/.claude/settings.json` 包含 SessionStart 段
-
-```json
-// settings.json 已有
-"SessionStart": [
-  {
-    "matcher": "startup",
-    "hooks": [
-      ...
-      {
-        "type": "command",
-        "command": "C:\\Python314\\python.exe \"F:\\soft\\00selfmade\\sql-skill\\tools\\sync-queue-consumer.py\"",
-        "timeout": 60
-      }
-    ]
-  }
-]
-```
-
-**机制**:Claude session 启动时消费所有 queue 文件,每个 entry 调 gbrain put_page 同步。
-
-### 3.4 通道 D:Manual 手动同步(应急)
-
-```bash
-# 手动 ingest 单个文件
-python F:/soft/00selfmade/sql-skill/tools/post-write-auto-sync.py \
-  --file E:/obsidian/SQL/08-sql-skill/chapters/ch01-grammar.md
-# queue 文件会写入,下个 Claude session 消费
-```
-
-或通过 gbrain MCP 直接:
-```python
-mcp__plugin_gbrain_gbrain__put_page(
-    slug="sql-skill/chapters/ch01-grammar",
-    content="<file content>",
-    content_origin="user_said"
-)
-```
-
-### 3.5 4 通道对比
-
-| 通道 | 触发 | 适用 | 频率 |
+| 通道 | 触发 | 用途 | 延迟 |
 |---|---|---|---|
-| **A. PostToolUse hook** | Claude 写 .md 到 vault | 即时同步 Claude 写的内容 | 即时(5min debounce) |
-| **B. Cron** | 每日 02:00 | 同步 Obsidian app 外部编辑 | 每日 |
-| **C. Agent 主动** | Claude session 启动 | 消费 hook 写入的 queue | 每次 session 启动 |
-| **D. Manual** | 用户主动 | 应急 / 大批 ingest / 调试 | 临时 |
+| **A. PostToolUse hook** | Claude 写 `.md` 到 vault | 主通道,写完即同步 | **≈1s** |
+| **B. Cron** | 每日 02:00 | 同步 Obsidian app 的外部编辑 | ≤24h |
+| **C. SessionStart** | 每次 Claude 启动 | 消费 A 遗留的 queue(兜底) | 启动时 |
+| **D. Manual** | 用户主动 | 应急 / 批量 ingest / 调试 | 立即 |
+
+通道 A 的实现(`tools/post-write-auto-sync.py`)是**三层降级**:
+
+1. **MCP over HTTP** —— 内嵌最小 MCP 客户端(`initialize` → `notifications/initialized` → `tools/call put_page`),JSON 与 SSE 两种响应模式都支持
+2. **gbrain CLI** —— `gbrain put <slug>` 走 stdin 传内容(章节 25KB+,命令行传参会撞 Windows 32KB 上限)
+3. **queue 文件** —— 前两条都失败时兜底,**绝不丢内容**
 
 ---
 
-## 四、4 层 lookup(固定顺序)
+## 七、与 evidence-skill 的边界
 
-```text
-Layer 0: gbrain semantic recall          ← 跨 10 章 + 4 辅助 + 8 luke 关键章节
-       (或 Read+Grep 跨 E:/obsidian/SQL/)
-  ↓
-Layer 1: cheatsheet.md                    ← 13 决策表 + 18 关键经验
-  ↓
-Layer 2: 对应 chapter (ch01-ch10)         ← deep dive
-  ↓
-Layer 3: evidence-skill 业务侧           ← 中文 schema / FDW / BI / MCP
-```
+两个 skill 刻意不重叠,靠 ch10 固化边界:
+
+| 主题 | 查 sql-skill | 查 evidence-skill |
+|---|---|---|
+| 通用语法 / 索引 / JOIN / 聚合 / 反模式 | ✅ ch01-ch11 | — |
+| 多方言语义差异(MySQL / Oracle / SQL Server) | ✅ ch11 | — |
+| Evidence BI 配置 / nginx / pgbouncer 部署 | ch08 §3/§6 引 | ✅ ch14 权威 |
+| 中文 schema 假名映射明细(13+ page 清单) | ch07 §5 引 | ✅ ch05 权威 |
+| postgres_fdw 完整 5 步部署 | ch07 §4 引 | ✅ ch07 权威 |
+| MCP self-host 4 道防线部署细节 | ch09 §7 引 | ✅ ch16 权威 |
 
 ---
 
-## 五、项目结构
+## 八、目录结构
 
 ```
 sql-skill/
-├── README.md                              ← 本文件
-├── LICENSE                                ← MIT
-├── .gitignore
+├── sql-skill/                        ← skill 本体(装进 ~/.claude/skills/ 的就是这一层)
+│   ├── SKILL.md                      ← 入口:12 框架速查 + Gotchas + 章节索引(104 行)
+│   ├── INDEX.md                      ← 资源索引
+│   ├── chapters/                     ← 11 章正文(4,375 行)
+│   └── supporting/                   ← cheatsheet / glossary / patterns
+│   └── references/                   ← topic-index(99 术语)/ retrieval(检索规范)
 │
-├── sql-skill/                             ← skill 核心
-│   ├── SKILL.md                           ← skill 入口 + 12 framework
-│   ├── INDEX.md                           ← 资源索引(来自 Obsidian 00-索引.md)
-│   ├── chapters/                          ← 10 章正文
-│   │   ├── ch01-grammar.md
-│   │   ├── ch02-joins.md
-│   │   ├── ch03-window-functions.md
-│   │   ├── ch04-cte-recursion.md
-│   │   ├── ch05-aggregates.md
-│   │   ├── ch06-set-ops.md
-│   │   ├── ch07-pg-specific.md
-│   │   ├── ch08-indexes-perf.md
-│   │   ├── ch09-antipatterns.md
-│   │   └── ch10-evidence-bridge.md
-│   └── supporting/                         ← 4 辅助文件
-│       ├── cheatsheet.md
-│       ├── glossary.md
-│       └── patterns.md
+├── tools/                            ← 同步与评测工具(仅标准库依赖)
+│   ├── post-write-auto-sync.py       ← 通道 A:内嵌 MCP 客户端 + CLI 直写 + queue 兜底
+│   ├── sync-queue-consumer.py        ← 通道 C:消费 queue
+│   ├── cron-sync-sql-skill.sh        ← 通道 B:Cron 脚本
+│   ├── register-cron-sync.ps1        ← 通道 B:注册 Windows 计划任务
+│   └── eval_civilian7.py             ← 评测:count / skill-aware / baseline / claude-api
 │
-├── tools/                                  ← 4 通道同步工具
-│   ├── post-write-auto-sync.py            ← 通道 A:PostToolUse hook
-│   ├── sync-queue-consumer.py             ← 通道 C:SessionStart 消费 queue
-│   ├── cron-sync-sql-skill.sh             ← 通道 B:Cron 周期同步
-│   ├── register-cron-sync.ps1             ← 通道 B:Windows Task Scheduler 注册
-│   └── lookup-sql-vault.md                 ← Layer 0 检索规范(Read+Grep)
+├── references/luke/                  ← Use The Index, Luke! 8 篇离线镜像(252K)
 │
-├── references/                             ← 引用资源
-│   └── luke/                               ← 8 篇 luke 关键章节
-│       ├── README.md
-│       ├── sql-anatomy-the-tree.html        (B-Tree)
-│       ├── sql-explain-plan.html           (EXPLAIN)
-│       ├── sql-join-hash-join-partial-objects.html
-│       ├── sql-join-nested-loops-join-n1-problem.html
-│       ├── sql-join-sort-merge-join.html
-│       ├── sql-where-clause-functions-case-insensitive-search.html
-│       ├── sql-partial-results-top-n-queries.html
-│       └── sql-partial-results-window-functions.html
+├── docs/                             ← 开发文档
+│   ├── audit/                        ← token 成本 / validator 报告
+│   ├── specs/ · plans/ · handoffs/   ← 各阶段设计、计划、交接
+│   └── CHANGELOG.md
 │
-├── docs/                                   ← 项目开发文档
-│   ├── handoffs/                          ← 阶段 handoff + 下一会话 prompt
-│   ├── specs/                             ← 各阶段 spec
-│   ├── plans/                             ← 各阶段 plan
-│   └── superpowers/                       ← superpowers 框架原始文件
-│
-└── _knowledge_base/                       ← 调研笔记(暂不强制需要)
+└── eval_civilian7_report.{json,md}   ← 最近一次评测报告
 ```
 
 ---
 
-## 六、依赖与兼容性
+## 九、依赖与兼容性
 
-| 依赖 | 版本 | 用途 |
-|---|---|---|
-| PostgreSQL | 14+ | 所有 SQL 例子针对 PG 14+ |
-| Python | 3.14+ | sync-queue-consumer.py / post-write-auto-sync.py |
-| Git Bash | 4.0+ | cron-sync-sql-skill.sh |
-| PowerShell | 5.1+ | register-cron-sync.ps1 |
-| gbrain(可选) | 0.60.214+ | gbrain RAG 模式 |
+| 依赖 | 版本 | 必需? | 用途 |
+|---|---|---|---|
+| Markdown 阅读器 | — | ✅ | 核心内容,无运行时依赖 |
+| Python | 3.10+ | 同步/评测工具需要 | 仅标准库(`json` / `urllib` / `sqlite3`) |
+| PostgreSQL | 14+ | 例子针对 | SQL 示例的基准方言 |
+| Git Bash | 4.0+ | Cron 通道 | `cron-sync-sql-skill.sh` |
+| PowerShell | 5.1+ | Cron 通道 | `register-cron-sync.ps1` |
+| [gbrain](https://github.com/garrytan/gbrain) | 0.60+ | 可选 | semantic recall + 知识同步 |
+| Anthropic API | — | 可选 | 仅 `--mode claude-api` 评测用 |
+
+**知识来源**:[Use The Index, Luke!](https://use-the-index-luke.com/)(8 篇离线镜像)· [civilian7](https://github.com/) 1090 题 · [awesome-postgres](https://github.com/) · [SQL Style Guide](https://github.com/mattm/sql-style-guide)
 
 ---
 
-## 七、贡献
-
-### 7.1 修改 sql-skill 章节
+## 十、贡献
 
 ```bash
-# 1. 克隆并编辑
 git clone https://github.com/kizemo/sql-skill.git
 cd sql-skill
-# 编辑 sql-skill/chapters/ch01-grammar.md 等
-
-# 2. 提交
-git add .
-git commit -m "ch01: 补充 NULL 三值逻辑案例"
+# 编辑 sql-skill/chapters/*.md
+python tools/eval_civilian7.py --mode skill-aware   # 改完跑一遍,覆盖率不能掉
+git commit -m "ch08: 补充 BRIN 时序场景"
 git push origin main
 ```
 
-### 7.2 新增章节
+**新增章节 checklist**:
 
-1. 复制模板:`cp sql-skill/chapters/ch09-antipatterns.md sql-skill/chapters/ch11-new-topic.md`
-2. 替换内容(保留 9 段结构)
-3. 在 `SKILL.md` Chapter Index 添加行
-4. 在 `cheatsheet.md` 关键经验追加
-5. 提交 PR
-
-### 7.3 同步到本地 Obsidian vault
-
-```bash
-# 拉取最新
-git pull origin main
-# 复制到 vault
-cp -r sql-skill/ E:/obsidian/SQL/08-sql-skill/
-# Claude 下次 session 启动时,4 通道同步会自动 ingest
-```
+1. 复制模板 `cp sql-skill/chapters/ch09-antipatterns.md sql-skill/chapters/ch12-new-topic.md`
+2. 保留 9 段结构
+3. `sql-skill/SKILL.md` 的 Chapter Index 加一行
+4. `sql-skill/references/topic-index.md` 补术语
+5. `supporting/cheatsheet.md` 补关键经验
+6. 跑 `eval_civilian7.py --mode skill-aware` 确认覆盖率不掉
+7. 跑 skill-forge audit 确认 index 层没超 100 tok
 
 ---
 
-## 八、v2.2 关键决策沉淀
+## 十一、已知限制
 
-1. **复用 evidence-skill ingest 路径**:`mcp__gbrain_gbrain__put_pages` 走 default source(单 source 避免 source-guard)
-2. **batch ingest 分 3 批**:ch01-04 / ch05-08 / ch09-10,各 4 章 + 2 章,每批 < 8MB
-3. **混合检索策略**:gbrain semantic + Read+Grep keyword 互补
-4. **hook 进程用 queue 模式**:hook 无 MCP 客户端 → 写文件 → 下个 session 消费
-5. **4 通道同步**:
-   - A:Claude 写 .md → hook → queue
-   - B:Cron → 跑 gbrain sweep
-   - C:SessionStart → 消费 queue
-   - D:Manual → put_page 直接
+1. **`sql-skill` 本身不解决 schema 幻觉** —— 表结构、列名、业务口径要靠上层连接上下文提供(evidence-skill / MCP)
+2. **多方言只讲「与 PG 的差异」** —— 不教 MySQL / Oracle / SQL Server 入门
+3. **gbrain embedding 默认关闭**(缺 `VOYAGE_API_KEY`)—— 只能 keyword 召回
+4. **ch10 / ch11 在 civilian7 题库里没有对应用例** —— 那两章的覆盖靠人工评审,不是自动评测
+5. **`references/luke/` 是 HTML 镜像** —— 上游更新后需要手动同步
 
 ---
 
-## 九、已知限制
+## 十二、路线图
 
-1. **embedding_state: disabled**:`gbrain` conservative keyless 模式禁 vector search,只能 keyword 召回(已能 80% 覆盖)
-2. **mention_links: queued**:跨章 wikilinks 异步 sweep,无需手动等
-3. **git_state: queued**:filesystem 已有 markdown,gbrain serve 周期 commit
-4. **199M nl2sql-handbook 未 ingest**:v2.2 跳过(按需 sub-ingest)
-5. **外部 vault 1GB+ 未全 ingest**:luke 8 章关键引用已带,其余按需
-
----
-
-## 十、版本历史
-
-| 版本 | 日期 | 阶段 | 关键 |
-|---|---|---|---|
-| v0.1 | 2026-10-14 (Phase 2) | 3 章 | ch01 + ch07 + ch08 + 4 辅助 |
-| v1.0 | 2026-10-14 (Phase 3) | 10 章 | + ch02/03/04/05/06/09/10 |
-| v2.0 | 2026-10-15 | gbrain 设计 | ingest 设计,失败(PGLite 锁) |
-| v2.1 | 2026-10-15 | 务实方案 | Read+Grep 直接检索 vault |
-| **v2.2** | **2026-10-15** | **gbrain RAG 集成** | **10 章成功 ingest + 4 通道同步** |
+- [x] 10 章通用 SQL 知识 + 4 辅助文件
+- [x] 4 通道知识同步
+- [x] 渐进式披露重构(index 231→100 tok,load 5,503→2,005 tok)
+- [x] 多方言章节(MySQL / Oracle / SQL Server)
+- [x] hook 内嵌 MCP 客户端(即写即同步)
+- [x] 1090 题自动评测 + 执行准确率 A/B
+- [ ] gbrain embedding 启用(等 `VOYAGE_API_KEY`)
+- [ ] ch10 / ch11 专项题库(补自动评测盲区)
+- [ ] 更多方言(SQLite / ClickHouse)
 
 ---
 
-## 十一、致谢
+## 十三、致谢
 
-- [PostgreSQL 官方文档](https://www.postgresql.org/docs/)
-- [Use The Index, Luke!](https://use-the-index-luke.com/) — Markus Winand
-- [Mark Mazur SQL Style Guide](https://github.com/mattm/sql-style-guide)
-- [evidence-skill](https://github.com/kizemo/evidence-skill) — 业务侧 skill 互补
-- [gbrain](https://github.com/garrytan/gbrain) — semantic RAG 基础设施
+- [PostgreSQL 官方文档](https://www.postgresql.org/docs/) —— 语法与行为的权威来源
+- [Use The Index, Luke!](https://use-the-index-luke.com/) —— Markus Winand,索引与执行计划
+- [Mark Mazur SQL Style Guide](https://github.com/mattm/sql-style-guide) —— 风格铁律
+- [civilian7](https://github.com/) —— 1090 道实战题库
+- [evidence-skill](https://github.com/kizemo/evidence-skill) —— 业务侧互补
+- [gbrain](https://github.com/garrytan/gbrain) —— semantic RAG 与知识同步基础设施
+- [skill-optimizer](https://github.com/kizemo/skill-optimizer) —— token 成本审计与 validator
 
 ---
 
-**License**: MIT
-**Maintainer**: kizemo
-**Repository**: https://github.com/kizemo/sql-skill
+**License**: [MIT](LICENSE) · **Maintainer**: [kizemo](https://github.com/kizemo) · **Repo**: https://github.com/kizemo/sql-skill
