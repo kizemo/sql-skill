@@ -142,16 +142,28 @@ python tools/eval_civilian7.py --mode baseline --db <playground.db>
 
 剩下的 5% 已分类:方言专属构造(`PROCEDURE` / `TRIGGER` / `DELIMITER`)、SQLite 不支持的 `GROUP_CONCAT(DISTINCT x, sep)`,以及**故意触发约束违例**的题(那批题的目的就是演示报错)。
 
-### 4.3 执行准确率 A/B —— skill 到底帮上忙没有
+### 4.3 执行准确率 A/B —— 一个诚实的**负结果**
 
-让模型真的去答 SQL,把生成的 SQL 拿去 SQLite 执行,和 reference SQL 的**结果集**对拍(不是比字符串):
+我们让模型真的去答 SQL,把生成的 SQL 拿去 SQLite 执行,和 reference SQL 的**结果集**对拍(不是比字符串),然后对比「不给 skill 上下文」与「注入 skill 章节」:
 
 ```bash
-python tools/eval_civilian7.py --mode claude-api --db <playground.db> --api-sample 20 --seed 42 --context none
-python tools/eval_civilian7.py --mode claude-api --db <playground.db> --api-sample 20 --seed 42 --context skill
+python tools/eval_civilian7.py --mode claude-api --db <playground.db> --api-sample 12 --seed 42 --context none
+python tools/eval_civilian7.py --mode claude-api --db <playground.db> --api-sample 12 --seed 42 --context skill
 ```
 
-固定 `--seed` 保证两轮抽到同一批题,否则 A/B 不可比。结果见 [`docs/audit/`](docs/audit/)。
+| 轮次 | 计分题 | 正确 | 执行准确率 |
+|---|---:|---:|---:|
+| `context=none` | 12 | 2 | 16.7% |
+| `context=skill` | 11 | 2 | 18.2% |
+
+**但那 2 个百分点是分母假象,不是提升**:0 题从 wrong 翻成 correct,唯一的状态变化是 `a19-03` 因 prompt 变长而**超时**(`wrong → api_error`),分母因此从 12 变成 11。去掉那题,两轮都是 2/12,**完全打平**。
+
+**这个负结果比假的正结果更有价值**,它澄清了两件事:
+
+1. **把知识原文塞进 prompt 是「用错方式」** —— prompt 变长只增加了超时风险
+2. **skill 的价值在「路由到正确的章」,不在「把知识灌进上下文」** —— 而路由能力已经被一个样本大 90 倍的指标直接测了:**1090 题覆盖率 100%**
+
+完整逐题对比、方法边界、以及「怎么把这个指标做实」的 5 条改进项见 **[`docs/audit/eval-ab-2026-10-26.md`](docs/audit/eval-ab-2026-10-26.md)**。
 
 ---
 
@@ -308,7 +320,8 @@ git push origin main
 2. **多方言只讲「与 PG 的差异」** —— 不教 MySQL / Oracle / SQL Server 入门
 3. **gbrain embedding 默认关闭**(缺 `VOYAGE_API_KEY`)—— 只能 keyword 召回
 4. **ch10 / ch11 在 civilian7 题库里没有对应用例** —— 那两章的覆盖靠人工评审,不是自动评测
-5. **`references/luke/` 是 HTML 镜像** —— 上游更新后需要手动同步
+5. **执行准确率 A/B 目前是负结果** —— 12 题小样本 + 弱模型 + API 不稳,**测不出 skill 对准确率的增益**(见 § 4.3)。本仓库只声称「路由覆盖率 100%」这个被实测的结论,不声称「skill 让 SQL 更准」
+6. **`references/luke/` 是 HTML 镜像** —— 上游更新后需要手动同步
 
 ---
 

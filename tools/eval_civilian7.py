@@ -604,9 +604,11 @@ def mode_claude_api(
     # SDK 默认超时 600s —— 评测里一次卡住就白等 10 分钟,必须显式收紧
     api_timeout = int(os.environ.get("EVAL_API_TIMEOUT", "60"))
     try:
-        client = anthropic.Anthropic(timeout=api_timeout)
+        # max_retries=1:SDK 默认重试 2 次,评测里一次 5xx 会被放大成
+        # 3×timeout 的等待,整轮跑不完
+        client = anthropic.Anthropic(timeout=api_timeout, max_retries=1)
     except TypeError:
-        client = anthropic.Anthropic()
+        client = anthropic.Anthropic(timeout=api_timeout)
     # 探测 SDK 是否支持 temperature(标准 anthropic 支持,部分中继 shim 不支持)
     try:
         import inspect
